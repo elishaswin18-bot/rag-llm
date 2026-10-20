@@ -1,7 +1,7 @@
 ## (Claude Certified Architect — Foundations CCA certification)
  - [https://claudecertprep.com/cheatsheet]
  - https://www.clearcatnet.com/
-
+```
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,8 +51,9 @@
       <li><code>users.parquet</code> and <code>orders.parquet</code> hold the output tables.</li>
     </ul>
 
-    <h2>Upload a Parquet file</h2>
-    <input type="file" id="upload" accept=".parquet">
+    <h2>Upload a file</h2>
+    <p>Supports Parquet, CSV and Excel (.xlsx, .xls). The file is read in your browser and is not sent anywhere.</p>
+    <input type="file" id="upload" accept=".parquet,.csv,.xlsx,.xls">
     <section id="uploaded"></section>
 
     <section id="tables"></section>
@@ -60,35 +61,60 @@
 
   <script type="module">
     import { parquetReadObjects } from "https://esm.sh/hyparquet@1.31.5";
+    import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
+    const MAX_ROWS_SHOWN = 1000; // rendering every row of a big file would freeze the page
     const container = document.getElementById("tables");
     const esc = (v) => String(v).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 
-    async function showParquet(name, getBuffer, target = container) {
+    // Each reader returns [{ title, rows }]: one entry per table (Excel can have several sheets).
+    async function readTables(name, buffer) {
+      const ext = name.split(".").pop().toLowerCase();
+      if (ext === "parquet") {
+        return [{ title: name, rows: await parquetReadObjects({ file: buffer }) }];
+      }
+      if (ext === "csv" || ext === "xlsx" || ext === "xls") {
+        const wb = XLSX.read(buffer, { type: "array" });
+        return wb.SheetNames.map(sheet => ({
+          title: ext === "csv" ? name : `${name} - ${sheet}`,
+          rows: XLSX.utils.sheet_to_json(wb.Sheets[sheet], { defval: "" }),
+        }));
+      }
+      throw new Error(`Unsupported file type: .${ext}`);
+    }
+
+    function renderTable(target, title, rows) {
       const section = document.createElement("div");
-      section.innerHTML = `<h2></h2><p>Loading...</p><table></table>`;
-      section.querySelector("h2").textContent = name;
+      section.innerHTML = `<h2></h2><p></p><table></table>`;
+      section.querySelector("h2").textContent = title;
       target.appendChild(section);
       const status = section.querySelector("p");
-      const table = section.querySelector("table");
+      if (rows.length === 0) {
+        status.textContent = "0 rows";
+        return;
+      }
 
+      const cols = Object.keys(rows[0]);
+      const shown = rows.slice(0, MAX_ROWS_SHOWN);
+      section.querySelector("table").innerHTML =
+        "<thead><tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr></thead>" +
+        "<tbody>" +
+        shown.map(r => "<tr>" + cols.map(c => `<td>${esc(r[c])}</td>`).join("") + "</tr>").join("") +
+        "</tbody>";
+      status.textContent = `${rows.length} rows, ${cols.length} columns` +
+        (rows.length > shown.length ? ` (showing first ${shown.length})` : "");
+    }
+
+    async function showFile(name, getBuffer, target = container) {
       try {
-        const rows = await parquetReadObjects({ file: await getBuffer() });
-        console.log(`Loaded ${name} rows:`, rows);
-        if (rows.length === 0) {
-          status.textContent = "0 rows";
-          return;
+        for (const { title, rows } of await readTables(name, await getBuffer())) {
+          console.log(`Loaded ${title} rows:`, rows);
+          renderTable(target, title, rows);
         }
-
-        const cols = Object.keys(rows[0]);
-        table.innerHTML =
-          "<thead><tr>" + cols.map(c => `<th>${esc(c)}</th>`).join("") + "</tr></thead>" +
-          "<tbody>" +
-          rows.map(r => "<tr>" + cols.map(c => `<td>${esc(r[c])}</td>`).join("") + "</tr>").join("") +
-          "</tbody>";
-        status.textContent = `${rows.length} rows, ${cols.length} columns`;
       } catch (err) {
-        status.textContent = "Failed to load: " + err.message;
+        const p = document.createElement("p");
+        p.textContent = `Failed to load ${name}: ${err.message}`;
+        target.appendChild(p);
       }
     }
 
@@ -96,11 +122,11 @@
       const file = e.target.files[0];
       const uploaded = document.getElementById("uploaded");
       uploaded.innerHTML = "";
-      if (file) await showParquet(file.name, () => file.arrayBuffer(), uploaded);
+      if (file) await showFile(file.name, () => file.arrayBuffer(), uploaded);
     });
 
     for (const file of ["users.parquet", "orders.parquet"]) {
-      await showParquet(file, async () => {
+      await showFile(file, async () => {
         const res = await fetch(file);
         if (!res.ok) throw new Error(`HTTP ${res.status} (serve this folder over http, not file://)`);
         return res.arrayBuffer();
@@ -113,4 +139,9 @@
   </footer>
 </body>
 </html>
+```
 
+
+
+
+````
