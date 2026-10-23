@@ -1,6 +1,18 @@
 ## (Claude Certified Architect — Foundations CCA certification)
  - [https://claudecertprep.com/cheatsheet]
  - https://www.clearcatnet.com/
+
+```
+// [{a:1,b:2}, {a:3,b:4}] -> [["a","b"], [1,2], [3,4]]: header row first, then one array per record.
+ console.log('temp', JSON.stringify(toArrays(records))); // JSON.stringify prints strings with double quotes
+    function toArrays(rows) {
+      if (rows.length === 0) return [];
+      const cols = Object.keys(rows[0]);
+      return [cols, ...rows.map(r => cols.map(c => String(r[c])))];
+    }
+
+```
+   
 ```
 <!DOCTYPE html>
 <html lang="en">
