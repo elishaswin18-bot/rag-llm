@@ -3,6 +3,25 @@
  - https://www.clearcatnet.com/
 
 ```
+function mapType(v) {
+  const t = String(v ?? '').toLowerCase().trim();
+  // "Timestamp<MICROSECOND, UTC>" -> "timestamp", "INT_8" -> "int8", "date32[day]" -> "date32"
+  const base = t.replace(/[<(\[].*$/, '').replace(/[\s_]/g, '');
+
+  if (/^(struct|list|largelist|fixedsizelist|map|array|row)$/.test(base)) return 'string'; // nested; change to 'complex' if you need it
+  if (/^(timestamp|datetime|int96)/.test(base)) return 'timestamp';
+  if (/^date(32|64)?$/.test(base)) return 'date';
+  if (/^(decimal|numeric|number)/.test(base)) return 'decimal';
+  if (/^(bigint|long|int64|uint32|uint64)$/.test(base)) return 'bigint';
+  if (/^(int|integer|smallint|tinyint|short|byte|int8|int16|int32|uint8|uint16)$/.test(base)) return 'int';
+  if (/^(double|float|float16|float32|float64|halffloat|real)$/.test(base)) return 'double';
+  if (/^bool(ean)?$/.test(base)) return 'boolean';
+  return 'string';
+}
+
+```
+
+```
 // [{a:1,b:2}, {a:3,b:4}] -> [["a","b"], [1,2], [3,4]]: header row first, then one array per record.
  console.log('temp', JSON.stringify(toArrays(records))); // JSON.stringify prints strings with double quotes
     function toArrays(rows) {
