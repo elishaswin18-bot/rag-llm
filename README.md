@@ -3,21 +3,102 @@
  - https://www.clearcatnet.com/
 
 ```
-function mapType(v) {
-  const t = String(v ?? '').toLowerCase().trim();
-  // "Timestamp<MICROSECOND, UTC>" -> "timestamp", "INT_8" -> "int8", "date32[day]" -> "date32"
-  const base = t.replace(/[<(\[].*$/, '').replace(/[\s_]/g, '');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parquet Schema Reader</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+        pre { background: #f5f5f5; border: 1px solid #ddd; padding: .75rem; overflow: auto; }
+        .error { color: #b91c1c; }
+    </style>
+</head>
+<body>
 
-  if (/^(struct|list|largelist|fixedsizelist|map|array|row)$/.test(base)) return 'string'; // nested; change to 'complex' if you need it
-  if (/^(timestamp|datetime|int96)/.test(base)) return 'timestamp';
-  if (/^date(32|64)?$/.test(base)) return 'date';
-  if (/^(decimal|numeric|number)/.test(base)) return 'decimal';
-  if (/^(bigint|long|int64|uint32|uint64)$/.test(base)) return 'bigint';
-  if (/^(int|integer|smallint|tinyint|short|byte|int8|int16|int32|uint8|uint16)$/.test(base)) return 'int';
-  if (/^(double|float|float16|float32|float64|halffloat|real)$/.test(base)) return 'double';
-  if (/^bool(ean)?$/.test(base)) return 'boolean';
-  return 'string';
-}
+    <h2>Parquet Schema Reader</h2>
+
+    <input type="file" id="parquetFile" accept=".parquet" disabled>
+    <p id="status">Loading Parquet library…</p>
+
+    <pre id="output"></pre>
+
+    <script>
+        const input = document.getElementById("parquetFile");
+        const status = document.getElementById("status");
+        const output = document.getElementById("output");
+
+        // Load hyparquet once; later callers reuse the same promise.
+        let _parquetPromise = null;
+
+        function loadHyparquet() {
+            if (_parquetPromise) return _parquetPromise;
+
+            _parquetPromise = import("https://cdn.jsdelivr.net/npm/hyparquet@1.31.0/+esm")
+                .then((module) => {
+                    if (!module.parquetMetadata) {
+                        throw new Error("parquetMetadata not found");
+                    }
+                    return module;
+                })
+                .catch((err) => {
+                    _parquetPromise = null; // allow a retry after a failed load
+                    throw err;
+                });
+
+            return _parquetPromise;
+        }
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            status.className = "";
+            status.textContent = `Reading ${file.name}…`;
+            output.textContent = "";
+
+            try {
+                const { parquetMetadata } = await loadHyparquet();
+                const arrayBuffer = await file.arrayBuffer();
+                const metadata = parquetMetadata(arrayBuffer);
+                console.log("metadata", metadata);
+
+                let outputText = "Column Name | Data Type | Nullable | Primary Key\n" +
+                                 "--------------------------------------------------\n";
+                metadata.schema
+                    .filter((field) => field.type) // skip root and group nodes
+                    .forEach((field) => {
+                        const nullable = field.repetition_type === "OPTIONAL" ? "YES" : "NO";
+                        const name = field.name.toLowerCase();
+                        const primaryKey = name === "id" || name.endsWith("_id") ? "YES" : "NO";
+                        outputText += `${field.name} | ${field.type} | ${nullable} | ${primaryKey}\n`;
+                    });
+
+                output.textContent = outputText;
+                status.textContent = `${file.name}: ${metadata.num_rows} rows`;
+            } catch (err) {
+                console.error(err);
+                status.className = "error";
+                status.textContent = "Could not parse PARQUET: " + err.message;
+            }
+        };
+
+        // Preload the library, then enable the input.
+        loadHyparquet()
+            .then(() => {
+                input.disabled = false;
+                status.textContent = "Choose a .parquet file.";
+            })
+            .catch((err) => {
+                status.className = "error";
+                status.textContent = "Failed to load Parquet library: " + err.message;
+            });
+    </script>
+
+</body>
+</html>
+
 
 ```
 
