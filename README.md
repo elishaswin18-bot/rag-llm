@@ -66,14 +66,22 @@
 
                 let outputText = "Column Name | Data Type | Nullable | Primary Key\n" +
                                  "--------------------------------------------------\n";
+                // schema[0] is the root group ("schema"): it has no `type`, so skip it.
+                // Other fields: prefer the logical type (STRING, DATE, ...) over the
+                // physical one (BYTE_ARRAY, INT32, ...); nested groups show as GROUP.
+                const typeLabel = (f) =>
+                    f.logical_type?.type ?? f.converted_type ?? f.type ??
+                    (f.num_children ? "GROUP" : "UNKNOWN");
+
                 metadata.schema
-                    .filter((field) => field.type) // skip root and group nodes
+                    .slice(1)
                     .forEach((field) => {
                         const nullable = field.repetition_type === "OPTIONAL" ? "YES" : "NO";
                         const name = field.name.toLowerCase();
                         const primaryKey = name === "id" || name.endsWith("_id") ? "YES" : "NO";
-                        outputText += `${field.name} | ${field.type} | ${nullable} | ${primaryKey}\n`;
+                        outputText += `${field.name} | ${typeLabel(field)} | ${nullable} | ${primaryKey}\n`;
                     });
+
 
                 output.textContent = outputText;
                 status.textContent = `${file.name}: ${metadata.num_rows} rows`;
